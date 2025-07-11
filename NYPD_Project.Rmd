@@ -1,0 +1,411 @@
+---
+title: "wk3_Project"
+output:
+  html_document: default
+  pdf_document: default
+date: "2025-04-08"
+---
+
+One of the most deadly public safety issues plaguing major U.S. cities is gun violence.  Each shooting can be a moment of trauma that echoes across communities and raises questions on safety and prevention.  Examining the data around shootings can help better understand the dynamics of these incidents.
+
+In this project, I will use New York City Shooting Incidents data from 2006 to 2021 to examine patterns.  My goal will be to explore shootings in boroughs, across years, and time of day.  Additionally, I am to visualize the data and prepare a model to predict shootings by time of day.
+
+Before I begin our analysis, I will start by configuring the R Markdown. The following code chunk ensures that all R code will be shown alongside the output throughout the document, which is helpful for transparency and reproducibility.
+
+# Start an Rmd Document
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+## Load the prerequiste libraries
+Next, I load the libraries that will be used throughout this project.
+```{r libraries}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+```
+
+## Prepare the NYPD URL & Load the data
+I will define the URL for the NYPD shooting incidents dataset and load it directly into R.
+```{r create_url}
+## Get the Data for NYPD
+nypd_URL <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+```
+
+Once the URL is set, I use read.csv() to load the dataset into a variable.
+
+```{r read_the_data}
+## Read the data into R
+nypd <- read.csv(nypd_URL)
+```
+
+
+
+## Examination of the data
+Before jumping into cleaning or anaylysis, I will take a quick look at the structure of the dataset to understand what kind of information I will be working with.
+```{r see_columns}
+## Glimpse from tidyverse shows a list of columns, data type, and a few samples
+glimpse(nypd)
+```
+# Tidy and Transform Your Data
+
+The full dataset contains many columns that not necessary for my work.  I will select only the most relevant attributes to keep my project focused and manageable.
+```{r select_columns}
+## Select the columns we will use for our analysis
+nypd_selected <- select(
+                    # data
+                    nypd,
+                    # list of columns
+                    c("OCCUR_DATE", "OCCUR_TIME", "BORO", "PRECINCT",
+                      "STATISTICAL_MURDER_FLAG", "VIC_AGE_GROUP", "VIC_SEX", "VIC_RACE"
+                      )
+                  )
+
+```
+
+
+
+
+## Ensure the data is prepared so that we may run further analysis.
+I begin cleaning and transforming the dataset to make it ready for analysis.  This includes formatting the dates and times, converting flag columns to logicals, and creating a new column that will help me with grouping/summarizing the data.
+``` {r clean_up_steps1}
+## Clean up the data for our presentation purposes
+nypd_clean <- mutate(
+                     # mutate the nypd_selected
+                     nypd_selected,
+                     # Add OCCUR_DATE column 
+                     OCCUR_DATE = mdy(OCCUR_DATE),
+                     # Add OCCUR_TIME column
+                     OCCUR_TIME = hms(OCCUR_TIME),
+                     # Change Flag column into a logical
+                     STATISTICAL_MURDER_FLAG = as.logical(STATISTICAL_MURDER_FLAG),
+                     # Add Incident Column and set to 1, used for aggregating later
+                     INCIDENT = 1,
+                     # Add Year Column
+                     YEAR = year(OCCUR_DATE))
+```
+
+
+I will extract hour from the OCCUR_TIME field and it to create a new column called TIME_OF_DAY.  I divide the day into three categories: Morning, Afternoon and Night.  The goal here is to enable grouping the data to compare trends easily.
+
+```{r add_time_of_day}
+nypd_clean <- nypd_clean %>%
+  # Mutate the nypd_clean dataset
+  mutate(
+    # Add Hour column
+    HOUR = hour(OCCUR_TIME),
+    # Set up time of day Column
+    TIME_OF_DAY = 
+      case_when(
+        HOUR >= 5 & HOUR < 12 ~ "Morning",
+        HOUR >= 12 & HOUR < 18 ~ "Afternoon",
+        TRUE ~ "Night"
+      )
+  )
+```
+
+I'm going to convert the column into an ordered factor.  This helps R know what order I want TIME_OF_DAY to be in, which will help me when I plot the data.  With out this, TIME_OF_DAY will default to an alphabetical order and it will look funny to see Afternoon, Morning then Night in my plots.
+
+```{r factor_Time_of_Day}
+nypd_clean <- nypd_clean %>%
+  mutate(
+    #update column and set up factors to be ordered
+    TIME_OF_DAY = factor(TIME_OF_DAY, levels = c("Morning", "Afternoon", "Night"))
+  )
+```
+
+The summary() function in R provides a quick overview of each column.  This helps me verify that dates and times are formatted as I need them.
+
+```{r summarize_data}
+summary(nypd_clean)
+```
+
+
+# Add Visualizations and Analysis
+Next, I do not want to keep manually typing the dataset's minimum or maximum year.  Also, the dataset might be updated in the future.  In this step, I calculate the earliest and latest years available in the dataset.  I can then reference these variables later in my plot titles, or other caption to keep everything reusable.
+```{r set_up_years}
+# set up the min and max year variables to use in labels/captions
+# na.rm means for NA values ReMove --> na.rm
+min_year = min(nypd_clean$YEAR, na.rm = TRUE)
+max_year = max(nypd_clean$YEAR, na.rm = TRUE)
+```
+
+Now that the data is cleaned, I want to get a better sense of where shootings are most concentrated in New York City.  In this step, I count the number of incidents per borough using count(BORO), then plot the totals using a bar chart.  I can visually separate each borough with its own color. 
+
+```{r shootings_by_boro}
+#Get a sense for the concentration of shootings by boro
+
+#using cleaned data pass it over to the next function
+nypd_clean %>%
+  #Count the number of Boro instances (count() returns BORO, n = total instances)
+  count(BORO) %>%
+  # start a plot and set x to Boro, y to n, also, fill color by boro differently
+  ggplot(aes(x = BORO, y = n, fill = BORO)) +
+  # create bar columns for based on count
+  geom_col() +
+  # Define the labels
+  labs(
+    title = "Total Shootings by Borough",
+    x = "Borough",
+    y = "Count of Shootings",
+    caption = "Fig 1"
+  ) +
+  theme_minimal()
+```
+
+This chart gives me a quick overview of which boroughs have the highest number of shootings.  Brooklyn shows a high amount of shootings.
+
+
+I want to get a sense of how shooting incidents have changed over time.  My next step is to create a bar chart that displays the total number of shootings per year.  Each row in the dataset represents a single incident. Therefore, I can plot year on the x-axis and let geom_bar() count the rows automatically.
+
+```{r shootings_by_year}
+# Let's see how shootings appear through the years
+
+nypd_clean %>% #pass the cleaned up data as a parameter to the next funtion
+    #start the plot using YEAR for x-axis
+    ggplot(aes(x=YEAR)) +
+    # add a bar chart --- this auto counts the number of rows per YEAR
+    # also, fill with orange and hide the legends
+    geom_bar(fill = "orange", show.legend = FALSE)+
+    #set up the labels
+    labs(
+         # paste function pastes variables together as string
+         title = paste("NYPD Shooting Incidents by Year (", min_year, "-", max_year,")"),
+         x = "Years",
+         y = "Total Number of Shootings",
+         caption = "Fig 2") +
+    # keep the visual simple
+    theme_minimal()
+```
+
+This chart provides a clean visual of shootings trending over time.  I can notice that shootings had trended downward from 2010 up until COVID started in 2020.
+
+
+I need to group the dataset by both YEAR and BORO to count the number of incidents in each combination.  This helps me explore how shooting patterns vary across boroughs over time.  The summary table in this step will be used to create a line chart.
+
+```{r set_up_shooting_by_year_boro}
+
+# set up a new count
+shootings_by_year_boro <- nypd_clean %>% # feed nypd_clean as count(data = nydp_clean, ...)
+  # count the incidents and group by YEAR and BORO
+  count(YEAR, BORO)
+
+```
+
+Now that I grouped the data, I will create a line chart to visualize how shooting incidents have changed over time in each borough.  Each line represents a different borough, and the points mark the yearly count.
+
+```{r show_shooting_by_year_boro}
+ggplot(data = shootings_by_year_boro, aes(x = YEAR, y = n, color = BORO)) +
+  # create a line graph
+  geom_line() +
+  geom_point()+
+  # set up labels
+  labs(
+    title = paste("Shooting Incidents by Borough and Year (", min_year, "-", max_year,")"),
+    x = "Year",
+    y = "Number of Shootings",
+    color = "Borough",
+    caption = "Fig 3"
+  ) +
+  # keep the visiual simple
+  theme_minimal()
+
+```
+
+The visual helps distinguish how shootings have trended over time across different boroughs.
+
+Next, I will count the number of incidents for each TIME_OF_DAY category.  This will help me explore when shootings are most likely to occur.
+
+```{r table of time of day shootings}
+shootings_by_time_of_day <- nypd_clean %>%
+  count(TIME_OF_DAY)
+
+shootings_by_time_of_day
+```
+
+This table gives a simple snapshot of when shootings happen most frequently.
+
+
+I will create a visual to better understand how time-of-day patterns differ across the boroughs.  I group the data by BORO and TIME_OFDAY.  I then create a grouped bar chart to visualize these relationships.  
+
+```{r using_time_of_day}
+# Split the bars by time of day
+
+nypd_clean %>%
+  count(BORO, TIME_OF_DAY) %>%
+  ggplot(aes(x = BORO, y = n, fill = TIME_OF_DAY)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Shootings by Borough and Time of Day",
+    x = "Borough",
+    y = "Number of Shootings",
+    fill = "Time of Day",
+    caption = "Fig 4"
+  ) +
+  theme_minimal()
+```
+
+This visualization helps reveal whether boroughs experience more shootings during a specific time of day.  This case we can see clear signs that Night shootings are more frequent across all boroughs.
+
+
+Going into this project, I assumed that shootings would affect male and female victims at roughly the same rate. I grouped the data by Year and VIC_SEX then filtered out any unknown values.  
+
+```{r set_up_shootings_by_year_sex}
+shootings_by_year_sex <- nypd_clean %>%
+  filter(VIC_SEX %in% c("M", "F")) %>%
+  count(YEAR, VIC_SEX)  
+
+```
+
+This allowed me to visualize how shootings have changed over time for each sex.
+
+```{r show_shootings_by_year_sex}
+
+ggplot(shootings_by_year_sex, aes(x = YEAR, y = n, color = VIC_SEX)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Trends in Shootings by Victim Sex Over Time",
+    subtitle = paste("Years: (", min_year, "-", max_year,")"),
+    x = "Year",
+    y = "Number of Shootings",
+    color = "Victim Sex",
+    caption = "Fig 5"
+  ) +
+  theme_minimal()
+
+```
+
+Interesting!  There is a wide margin between Male and Female victims.  I had a bias towards victims gender being evenly split among the sexes.  However, this bias proved false.  I am happy I chose to focus on Time of day shooting which manages my bias in this project.
+
+
+After challenging my initial bias around victim sex, I decided to return my focus on a time of day.  I grouped the data by HOUR and counted the number of shootings during each hour of the day.
+```{r set_up_shootings_by_hour}
+
+# set up a new count
+shootings_by_hour <- nypd_clean %>% # feed nypd_clean as count(data = nydp_clean, ...)
+  # count the incidents and group by HOUR
+  count(HOUR)
+
+```
+
+Next, I created a line and are plot to visualize how shooting frequency changes across the 24-hour cycle.  I shaded the area to emphasize the distribution.
+```{r show_shootings_by_hour}
+
+#create a new plot using shootings by hour
+ggplot(shootings_by_hour, aes(x = HOUR, y = n))+
+  geom_area(fill = "lightblue", alpha = 0.45)+
+  # add a line
+  geom_line()+
+  # add dots to the line
+  geom_point()+
+  # set up labels
+  labs(
+    title = "Shooting Frequency by Hour of Day",
+    subtitle = paste("Years : (", min_year, "-", max_year, ")"),
+    x = "Hour (0 = Midnight, 23 = 11 PM)",
+    y = "Number of Shootings",
+    caption = "Fig 6"
+  ) +
+  # add tick marks and label for all hours
+  scale_x_continuous(breaks = 0:23)+
+  # keep the visual simple
+  theme_minimal()
+```
+
+The plot reveals a U-shaped pattern where shootings are less frequent during midday and more common in the early morning and late evening hours.  This visual will set the foundation for modeling the relationship between time and shooting frequency.
+
+
+# Model the data
+
+I'm going to start with a simple linear regression using lm().  This model the relationship between time of day and shooting frequency.  The model will attempt to predict the number of shootings based on the hour of the day using a straight line relationship.
+```{r create_}
+model_linear <- lm(n ~ HOUR, data = shootings_by_hour)
+summary(model_linear)
+```
+The model shows a very weak linear relationship.  The R-Squared value is at 0.037 which means the model explains less than 4% of the variation seen in shootings.  P-value for HOUR is 0.367 and this is not statistically significant.  There is also a wide residual spread from -933 to +1335 which suggests a poor fit.  
+
+
+I will visualize the data and the model together.  I plot the real shooting counts by hour along with the fitted regression line in red.  Since I already observed a u-shaped pattern then I should be expecting straight line to misrepresent the underlying trend.
+
+
+```{r}
+ggplot(shootings_by_hour, aes(x = HOUR, y = n)) +
+  # Plot real shooting counts
+  geom_point() +
+  # Plot linear model line (wrong fit)
+  stat_smooth(method = "lm", formula = y ~ x, se = FALSE, color = "red") +
+  labs(
+    title = "Linear Model of Shootings by Hour (Not a Great Fit)",
+    subtitle = "A linear regression underestimates the curve in the data",
+    x = "Hour of Day",
+    y = "Number of Shootings",
+    caption = "Fig 7"
+  ) +
+  scale_x_continuous(breaks = 0:23) +
+  theme_minimal()
+```
+
+As expected, the linear model fails to capture the rise in shooting for early morning and late evening hours.
+
+Since the linear model failed to capture the u-shape, I need to try a different technique.I created a new variable HOUR2 by squaring the time of day.  This allowes me to fit a quadratic regression model which can better represent the curved relationship.  
+```{r linear_model_No_1}
+# mutate shootings by hour to include squared hours
+shootings_by_hour <- shootings_by_hour %>%
+  mutate(HOUR2 = HOUR^2)
+
+# create a lm model using HOUR + HOUR squared
+model_curve <- lm(n ~ HOUR + HOUR2, data = shootings_by_hour)
+
+# display model's summary
+summary(model_curve)
+```
+The model summary shows a better fit than the linear version.  The R-Squared is 0.90 indicating the model explains 90% of the variation in shootings by hour.  HOUR and HOUR2 as predictors are highly significant because the p-values are less than 0.001.  Also, the residual error is much lower than what I saw before.
+
+
+To show how well the quadratic model fist the data, I plot the real number of shootings by hour (as points) then overlap the fitted curve in red using stat_shooth().  This curve is based on the formula y~x+I(x^2) which is the quadratic model I built earlier.
+
+
+### Statistically Significant (p < 0.001)!
+This means there is strong evidence to suggest hour impacts the likelihood of a shooting.
+
+
+```{r visualize_lm}
+
+ggplot(shootings_by_hour, aes(x = HOUR, y = n)) +
+  # Actual data
+  geom_point(size = 2) +
+  # Smoothed curve from model
+  stat_smooth(
+    method = "lm", 
+    formula = y ~ x + I(x^2),
+    # show the standard error around the the fitted line
+    se = TRUE, 
+    color = "red", 
+    fill="red", 
+    alpha = 0.15) +
+  labs(
+    title = "Modeling Shootings by Hour of Day",
+    subtitle = "Using a quadratic regression (Hour + Hour²)",
+    x = "Hour of Day",
+    y = "Number of Shootings",
+    caption = "Fig 8"
+  ) +
+  scale_x_continuous(breaks = 0:23) +
+  theme_minimal()
+```
+
+This plot clearly shows how well the model captures the U-shaped pattern in shooting frequency by time of day.  The shared area around the curve represents the standard error which helps guage the uncertainty in the model's prediction.
+
+
+# Conclusion & Bias
+
+In this project, I set out to analyze the patterns in NYPD shootings incidents.  My goal was to understand various factors impacting shootings.  This included where shootings happened, the type of victims and the time of day shootings occurred.  After exploratory analysis, I built a quadratic regression model to explore the relationship between time of day and shootings.  The model showed a strong U-shaped patter where most shootings occurred in the early hours of the day or the evening.  The model fit the data very well with an $R^2$ of 0.90.  This indicated that the time of day alone explains a significant portion of the variation in shootings.
+
+At the start of this project, I assumed shootings occurred equally to male and female victims.  However, I was caught by surprise when the data told a different story.  The victim's sex across all years was overwhelmingly male.  This challenged my original perspective and made me realize I had unintentionally brought bias into my early assumptions.  In order to avoid my personal bias, I changed my focus from victim's sex to hour of the day.
+
+Although my personal bias can be addressed, we must be aware that there can be bias in the data.  The data includes only reported incidents and may not fully reflect all shootings that occurred.  Also, there could be victim data that is incomplete.  Finally, the data could be missing contributing factors that could influence the time and frequency of shootings.  For instance, leading up to 2020 there was decline in shootings, but 2020 had more shootings than the previous years.  COVID may had an influence that impacted the trend.
+
+This analysis helped me improve my ability to clean, visualize and model real-world data.  I found the assignment taught me how to research solutions in R and motivated me to learn more about the dataset.  If I were to continue the project, I would explore additional predictors such as age group or population size.
